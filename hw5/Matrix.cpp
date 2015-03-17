@@ -14,9 +14,7 @@ Matrix::Matrix(int rows, int cols) {
 }
 
 Matrix::Matrix(int rows, int cols, std::function<Val(int, int)> init) {
-    data = TwoDVec(rows);
-    std::for_each(data.begin(), data.end(), [&](std::vector<Val>& row) { row =
-            std::vector<Val>(cols); });
+    data = TwoDVec(rows, std::vector<Val>(cols, 0));
     for (size_t i = 0; i < rows; i++) {
         for (size_t j = 0; j < cols; j++) {
             data[i][j] = init(i, j);
@@ -86,16 +84,17 @@ void Matrix::multiply(const TwoDVec& matrix1, const TwoDVec& matrix2,
         TwoDVec& matrix3, size_t startRow1, size_t startCol1,
         size_t startRow2, size_t startCol2) const {
 
-    size_t max_i = blockSize + startRow1 >= matrix1.size() ? matrix1.size() - startRow1 : blockSize;
-    size_t max_j = blockSize + startCol2 >= matrix2[0].size() ? matrix2[0].size() - startCol2 : blockSize;
-    size_t max_k = blockSize + startCol1 >= matrix1[0].size() ? matrix1[0].size() - startCol1 : blockSize;
+    size_t max_i = blockSize + startRow1 >= matrix1.size() ? matrix1.size() : blockSize + startRow1;
+    size_t max_j = blockSize + startCol2 >= matrix2[0].size() ? matrix2[0].size() : blockSize + startCol2;
+    size_t max_k = blockSize + startCol1 >= matrix1[0].size() ? matrix1[0].size() : blockSize + startCol1;
 
-    for (size_t i = 0; i < max_i; i++) {
-        for (size_t j = 0; j < max_j; j++) {
-            for (size_t k = 0; k < max_k; k++) {
-                matrix3[startRow1 + i][startCol2 + j] += matrix1[i + startRow1][k + startCol1] *
-                    matrix2[k + startRow2][j + startCol2];
+    for (size_t i = startRow1; i < max_i; i++) {
+        for (size_t j = startCol2; j < max_j; j++) {
+            Val sum = 0;
+            for (size_t k1 = startCol1, k2 = startRow2; k1 < max_k; k1++, k2++) {
+                sum += matrix1[i][k1] * matrix2[k2][j];
             }
+            matrix3[i][j] += sum;
         }
     }
 }

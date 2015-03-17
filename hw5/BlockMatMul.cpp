@@ -13,7 +13,7 @@
     matrix multiplication supported by Matrix.h
 */
 
-#define MATRIX_SIZE 1000
+#define MATRIX_SIZE 2000
 #define REPETITIONS 5
 
 int main() {
