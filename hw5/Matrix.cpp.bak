@@ -1,0 +1,134 @@
+#include "Matrix.h"
+
+// Copyright 2015 Naoki Mizuno
+
+int Matrix::blockSize = 1;
+
+Matrix::Matrix() {
+    data = TwoDVec();
+    data.push_back(std::vector<Val>());
+    data.front().push_back(0);
+}
+
+Matrix::Matrix(int rows, int cols) {
+    data = TwoDVec(rows, std::vector<Val>(cols, 0));
+    // std::for_each(data.begin(), data.end(),
+    //         [cols] (std::vector<Val>& v) {
+    //             v = std::vector<Val>(cols);
+    //         });
+}
+
+Matrix::Matrix(int rows, int cols, std::function<Val(int, int)> init) {
+    data = TwoDVec(rows);
+    std::for_each(data.begin(), data.end(),
+            [cols] (std::vector<Val>& v) {
+                v = std::vector<Val>(cols);
+            });
+
+    for (size_t i = 0; i < rows; i++) {
+        for (size_t j = 0; j < cols; j++) {
+            data[i][j] = init(i, j);
+        }
+    }
+}
+
+Matrix::Matrix(const Matrix& src) : data(src.data) {
+}
+
+Matrix::Matrix(Matrix&& src) : data(std::move(src.data)) {
+}
+
+Matrix Matrix::operator+(const Matrix& src) const throw(std::exception) {
+    if (data.size() != src.data.size()
+            || data.front().size() != src.data.front().size()) {
+        throw std::exception();
+    }
+
+    unsigned rows = data.size();
+    unsigned cols = data.front().size();
+
+    Matrix m(rows, cols);
+    for (size_t i = 0; i < rows; i++) {
+        m.data[i].data()[0:cols] =
+            data[i].data()[0:cols] + src.data[i].data()[0:cols];
+    }
+
+    return m;
+}
+
+Matrix Matrix::operator*(const Matrix& src) const throw(std::exception) {
+    if (data.size() != src.data.front().size()
+            || data.front().size() != src.data.size()) {
+        throw std::exception();
+    }
+
+    unsigned rows = data.size();
+    unsigned cols = data.front().size();
+
+    Matrix m(rows, rows);
+
+    for (size_t i = 0; i < rows; i += blockSize) {
+        for (size_t j = 0; j < rows; j += blockSize) {
+            for (size_t k = 0; k < cols; k += blockSize) {
+                multiply(data, src.data, m.data, i, k, k, j);
+            }
+        }
+    }
+
+    return m;
+}
+
+Matrix& Matrix::operator=(const Matrix& src) {
+    data = src.data;
+    return *this;
+}
+
+Val Matrix::sumDiag() const {
+    Val sum = 0;
+    for (size_t i = 0; i < data.size(); i++) {
+        sum += data[i][i];
+    }
+
+    return sum;
+}
+
+void Matrix::multiply(const TwoDVec& matrix1, const TwoDVec& matrix2,
+        TwoDVec& matrix3, size_t startRow1, size_t startCol1,
+        size_t startRow2, size_t startCol2) const {
+    size_t max_i = startRow1 + blockSize < matrix1.size()
+        ? blockSize : matrix1.size() - startRow1;
+    size_t max_j = startCol2 + blockSize < matrix2.front().size()
+        ? blockSize : matrix2.front().size() - startCol2;
+    size_t max_k = startCol1 + blockSize < matrix1.front().size()
+        ? blockSize : matrix1.front().size() - startCol1;
+
+    for (size_t i = 0; i < max_i; i++) {
+        for (size_t j = 0; j < max_j; j++) {
+            for (size_t k = 0; k < max_k; k++) {
+                matrix3[startRow1 + i][startCol2 + j]
+                    += matrix1[startRow1 + i][startCol1 + k]
+                    *  matrix2[startRow2 + k][startCol2 + j];
+            }
+        }
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, const Matrix& matrix) {
+    os << matrix.data.size() << " " << matrix.data.front().size() << std::endl;
+    for (const std::vector<Val> v : matrix.data) {
+        std::copy(v.begin(), v.end(), std::ostream_iterator<int>(os, " "));
+        os << std::endl;
+    }
+    return os;
+}
+
+std::istream& operator>>(std::istream& is, Matrix& matrix) {
+    int rows, cols;
+    is >> rows >> cols;
+    matrix = Matrix(rows, cols);
+    for (int i = 0; i < rows; i++) {
+        std::copy_n(std::istream_iterator<int>(is), cols,
+                matrix.data[i].begin());
+    }
+    return is;
+}
