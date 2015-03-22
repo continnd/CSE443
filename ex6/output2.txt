@@ -1,0 +1,4 @@
+hello OpenMP from hello OpenMP from 01 of 2 threads.
+ of 2 threads.
+The value of a = 119148
+Value in vector = 100000 100000 0 0 

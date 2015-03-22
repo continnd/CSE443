@@ -1,0 +1,1 @@
+Enter number of pairs to generate as command-line arguments.

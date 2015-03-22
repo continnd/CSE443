@@ -1,0 +1,6 @@
+hello OpenMP from hello OpenMP from hello OpenMP from 10 of  of 43 threads.
+4 of  threads.
+4 threads.
+hello OpenMP from 2 of 4 threads.
+The value of a = 113478
+Value in vector = 100000 100000 100000 100000 
