@@ -1,0 +1,5 @@
+Rank[0]: argv[1] = one
+Rank[0]: argv[2] = two
+Rank[2]: argv[5] = five
+Rank[1]: argv[3] = three
+Rank[1]: argv[4] = four

@@ -6,25 +6,23 @@
 #include <string>
 #include "PNG.h"
 
-typedef std::pair<int, int> pixCor;
-typedef unsigned int u_int;
-typedef unsigned char u_char;
-
 // Copyright Nick Contini 2015
+
+using pixCor = std::pair<int, int>;
+using u_char  = unsigned char;
 
 inline bool isBlack(const u_char* pixel) {
     return pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0;
 }
 
-inline bool inThreshold(const std::vector<u_int> tolDiff,
-        const u_int tol) {
-    return tolDiff[0] <= tol && tolDiff[1] <= tol &&
-                tolDiff[2] <= tol;
+inline bool inThreshold(const int tolDiff[],
+        const int tol) {
+    return tolDiff[0] < tol && tolDiff[1] < tol && tolDiff[2] < tol;
 }
 
-u_int countBlack(const std::vector<u_char>& msk) {
-    u_int blk = 0;
-    for (size_t i = 0; i < msk.size(); i += 4) {
+int countBlack(const u_char msk[], const u_int mskW, const u_int mskH) {
+    int blk = 0;
+    for (size_t i = 0; i < mskH * mskW * 4; i += 4) {
         if (isBlack(&msk[i])) {
             blk++;
         }
@@ -32,10 +30,10 @@ u_int countBlack(const std::vector<u_char>& msk) {
     return blk;
 }
 
-void findAvgBg(std::vector<u_int>& avg, const u_char* img,
-        const std::vector<u_char>& msk, const int mskW,
+void findAvgBg(int avg[], const u_char* img,
+        const u_char msk[], const u_int mskW, const u_int mskH,
         const int imgW, const float blk) {
-    for (size_t i = 0; i < msk.size() / 4; i++) {
+    for (size_t i = 0; i < mskW * mskH; i++) {
         if (isBlack(&msk[i * 4])) {
             size_t imgI = (i / mskW * imgW + i % mskW) * 4;
             avg[0] += img[imgI];
@@ -48,12 +46,12 @@ void findAvgBg(std::vector<u_int>& avg, const u_char* img,
     avg[2] /= blk;
 }
 
-float calcMatch(const u_char* img,
-        const std::vector<u_char>& msk, std::vector<u_int>& avg,
-        const int mskW, const int imgW, const u_int tol) {
-    int numCorrect = 0;
-    std::vector<u_int> tolDiff(3);
-    for (size_t i = 0; i < msk.size() / 4; i++) {
+float calcMatch(const u_char* img, const u_char msk[],
+        int avg[], const int mskW, const u_int mskH, const u_int imgW,
+        const int tol) {
+    float numCorrect = 0;
+    int tolDiff[3];
+    for (size_t i = 0; i < mskH * mskW; i++) {
         int imgI = (i / mskW * imgW + i % mskW) * 4;
         tolDiff[0] = abs(img[imgI] - avg[0]);
         tolDiff[1] = abs(img[imgI + 1] - avg[1]);
@@ -66,7 +64,7 @@ float calcMatch(const u_char* img,
             numCorrect--;
         }
     }
-    return (numCorrect * 4.0f) / msk.size() * 100;
+    return numCorrect / (mskH * mskW) * 100;
 }
 
 void drawBox(PNG& png, int row, int col, int width, int height) {
@@ -82,29 +80,16 @@ void drawBox(PNG& png, int row, int col, int width, int height) {
     }
 }
 
-bool checkBounds(int& row, int& col, int mskW, int mskH,
-        std::vector<pixCor>& skipPixels,
-        u_int& i, int imgW) {
+bool checkBounds(int row, int& col, int mskW, int mskH,
+        std::vector<pixCor>& skipPixels, int imgW) {
     for (pixCor p : skipPixels) {
-        int x = (row <= p.first) ? row + mskH : row;
-        int y = (col <= p.second) ? col + mskW : col;
-        if (x >= p.first && x <= p.first + mskH &&
-                y >= p.second && y <= p.second + mskW) {
-            i += p.first - row + mskW;
-            row = i / imgW;
-            col = i % imgW;
+        int x = (row <= p.first) ? row + mskH - 1 : row;
+        int y = (col <= p.second) ? col + mskW - 1 : col;
+        if (x >= p.first && x < p.first + mskH &&
+                y >= p.second && y < p.second + mskW) {
+            col = p.second + mskW - 1;
             return true;
         }
-    }
-    return false;
-}
-
-bool checkEdge(int& col, int& row, int imgW, int mskW, u_int& pixel) {
-    if (col > imgW- mskW) {
-        pixel += imgW - col;
-        row = pixel / imgW;
-        col = pixel % imgW;
-        return true;
     }
     return false;
 }
@@ -115,34 +100,35 @@ void printMatch(int row, int col, int mskW, int mskH) {
         << std::endl;
 }
 
-void process(const u_int stopPixel, std::vector<u_char>::iterator& imgSt,
-        int mskW, int mskH, std::vector<pixCor>& skipPixels, int imgW,
-        std::vector<u_char> mskB, u_int blk, const u_int tol,
-        const u_int lmtPrc, PNG& result, u_int matches) {
-#pragma omp parallel for default(shared) schedule(static)
-    for (u_int i = 0; i < stopPixel; i++) {
-        int row = i / imgW, col = i % imgW;
+void process(u_char* imgSt, int mskW, int mskH,
+        std::vector<pixCor>& skipPixels, int imgW, int imgH,
+        u_char mskB[], int blk, const int tol,
+        const int lmtPrc, PNG& result, int matches) {
+#pragma omp parallel for schedule(static) default(shared)
+    for (int row = 0; row <= imgH - mskH; row++) {
+        for (int col = 0; col <= imgW - mskW; col++) {
+            if (!checkBounds(row, col, mskW, mskH, skipPixels, imgW)) {
+                int i = row * imgW + col, avg[3];
+                findAvgBg(avg, imgSt + i * 4, mskB, mskW, mskH, imgW, blk);
+                float perc = calcMatch(imgSt + i * 4, mskB, avg, mskW, mskH,
+                        imgW, tol);
+                if (perc >= lmtPrc) {
 #pragma omp critical(a)
-        while(checkBounds(row, col, mskW, mskH, skipPixels, i, imgW)
-                || checkEdge(row, col, imgW, mskW, i)) { };
-        std::vector<u_int> avg(3);
-        findAvgBg(avg, &(*imgSt) + i * 4, mskB, mskW, imgW, blk);
-        float perc = calcMatch(&(*imgSt) + i * 4, mskB, avg, mskW, imgW, tol);
-        if (perc >= lmtPrc) {
-#pragma omp critical(a)
-            {
-                drawBox(result, row, col, mskW, mskH), matches++;
-                skipPixels.push_back(pixCor(row, col));
-                printMatch(row, col, mskW, mskH);
+                    {
+                        drawBox(result, row, col, mskW, mskH), matches++;
+                        skipPixels.push_back(pixCor(row, col));
+                        printMatch(row, col, mskW, mskH);
+                    }
+                    col += mskW - 1;
+                }
             }
-            i += mskW - 1;
         }
     }
     std::cout << "Number of matches: " << matches << std::endl;
 }
 
 int main(int argc, char const* argv[]) {
-    if (argc < 4 || argc > 7) {
+    if (argc < 5 || argc > 7) {
         std::cout << "Invalid number of arguments." << std::endl;
         return 1;
     }
@@ -151,23 +137,21 @@ int main(int argc, char const* argv[]) {
     img.load(std::string(argv[1]));
     msk.load(std::string(argv[2]));
 
-    u_int blk = countBlack(msk.getBuffer());
+    int blk = countBlack(msk.getBuffer().data(), msk.getWidth(),
+            msk.getHeight());
 
-    std::vector<u_char> mskB = msk.getBuffer();
     PNG result(img);
 
-    const u_int lmtPrc = argc >= 6 ? std::stoi(argv[5]) : 75,
-          tol = argc == 7 ? std::stoi(argv[6]) : 32, stopPixel =
-              (img.getBuffer().size() - ((msk.getHeight() - 1) *
-                                         img.getWidth() - msk.getWidth()) * 4) / 4;
-
+    const int lmtPrc = (argc >= 6) ? std::stoi(argv[5]) : 75,
+          tol = (argc == 7) ? std::stoi(argv[6]) : 32; 
     std::vector<pixCor> skipPixels;
 
-    std::vector<u_char>::iterator imgSt = img.getBuffer().begin();
-    u_int matches = 0;
+    u_char* imgSt = &(img.getBuffer()[0]);
+    int matches = 0;
 
-    process(stopPixel, imgSt, msk.getWidth(), msk.getHeight(), skipPixels,
-            img.getWidth(), mskB, blk, tol, lmtPrc, result, matches);
+    process(imgSt, msk.getWidth(), msk.getHeight(), skipPixels,
+            img.getWidth(), img.getHeight(), msk.getBuffer().data(), blk, tol,
+            lmtPrc, result, matches);
 
     result.write(argv[3]);
     return 0;
