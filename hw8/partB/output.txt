@@ -1,0 +1,7 @@
+Statistics for http://en.wikipedia.org/wiki/Miss_Marple:
+Using words: detective murder mystery police victim 
+Words with distance=0: 1769153443
+Words with distance=1: 1768711566
+Words with distance=2: 762538876
+Words with distance=3: 1768647137
+Words with distance=4: 1768188278

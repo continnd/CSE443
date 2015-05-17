@@ -1,0 +1,131 @@
+#include <mpi.h>
+#include <algorithm>
+#include <string>
+#include <iostream>
+#include <vector>
+#include "HTMLDownloader.h"
+
+#define MAX_LENGTH 15
+
+// Copyright 2015 continnd@miamioh.edu
+
+int minCorners(const int num1, const int num2, const int num3) {
+    int winner = std::min(num1, num2);
+    return std::min(winner, num3);
+}
+
+int levenshteinDist(const std::string& str1, const std::string& str2) {
+    bool matchInc = false;
+    int m[str1.size()][str2.size()];
+    m[0][0] = (str1[0] != str2[0]);
+    for (size_t i = 1; i < str1.size(); i++) {
+        m[i][0] = m[i-1][0] + (str1[i] != str2[0] || matchInc ? 1 : 0);
+        if (!matchInc && str1[i] == str2[0]) {
+            matchInc = true;
+        }
+    }
+    matchInc = false;
+    for (size_t i = 1; i < str2.size(); i++) {
+        m[0][i] = m[0][i - 1] + (str1[0] != str2[i] || matchInc ? 1 : 0);
+        if (!matchInc && str1[0] == str2[i]) {
+            matchInc = true;
+        }
+    }
+    for (size_t i = 1; i < str1.size(); i++) {
+        for (size_t j = 1; j < str2.size(); j++) {
+            int min = str1[i] == str2[j] ? m[i - 1][j- 1] :
+                minCorners(m[i - 1][j- 1], m[i][j - 1], m[i - 1][j]);
+            m[i][j] = min + (str1[i] != str2[j]);
+        }
+    }
+    return m[str1.size() - 1][str2.size() - 1];
+}
+
+void printOutput(int* output, std::string url,
+        std::vector<std::string> checkWords) {
+    std::cout << "Statistics for " << url << ":" << std::endl;
+    std::cout << "Using words: " << std::flush;
+    for (std::string word : checkWords) {
+        std::cout << word << " " << std::flush;
+    }
+    std::cout << std::endl;
+    std::cout << "Words with distance=0: " << output[0] << std::endl;
+    std::cout << "Words with distance=1: " << output[1] << std::endl;
+    std::cout << "Words with distance=2: " << output[2] << std::endl;
+    std::cout << "Words with distance=3: " << output[3] << std::endl;
+    std::cout << "Words with distance=4: " << output[4] << std::endl;
+}
+
+void manager(std::istream& is, const int numProcs,
+        std::vector<std::string>& checkWords, std::string& url) {
+    char sendBuff[numProcs * MAX_LENGTH], recvBuff[MAX_LENGTH];
+    int count[5] = {0, 0, 0, 0, 0};
+    while (!is.eof()) {
+        for (int i = 0; i < numProcs; i++) {
+            std::string temp;
+            if (!(is >> temp)) {
+                temp = "";
+            }
+            temp.resize(MAX_LENGTH);
+            for (int j = 0; j < MAX_LENGTH; j++) {
+                sendBuff[i * MAX_LENGTH + j] = temp[j];
+            }
+        }
+        MPI_Scatter(sendBuff, MAX_LENGTH, MPI_CHAR, recvBuff, MAX_LENGTH,
+                MPI_CHAR, 0, MPI_COMM_WORLD);
+        std::string work = "";
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            work += recvBuff[i];
+        }
+        for (std::string word : checkWords) {
+            int levDist = levenshteinDist(word, work);
+            if (levDist < 5) {
+                count[levDist]++;
+            }
+        }
+    }
+    for (int i = 0; i < MAX_LENGTH * numProcs; i++) {
+        if (i % 15 == 0) {
+            sendBuff[i] = ' ';
+        } else {
+            sendBuff[i] = '\0';
+        }
+    }
+    MPI_Scatter(sendBuff, MAX_LENGTH, MPI_CHAR, recvBuff, MAX_LENGTH,
+            MPI_CHAR, 0, MPI_COMM_WORLD);
+    int totalLev[5] = {0, 0, 0, 0, 0};
+    MPI_Reduce(&count, &totalLev, 5, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    printOutput(totalLev, url, checkWords);
+}
+
+void worker(std::vector<std::string>& checkWords) {
+    char recvBuff[MAX_LENGTH], *sendBuff;
+    int count[5] = {0, 0, 0, 0, 0};
+    while (true) {
+        MPI_Scatter(sendBuff, MAX_LENGTH, MPI_CHAR, recvBuff, MAX_LENGTH,
+                MPI_CHAR, 0, MPI_COMM_WORLD);
+        std::string work = "";
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            work += recvBuff[i];
+        }
+        if (work[0] == ' ') {
+            break;
+        }
+        if (work != "") {
+            for (std::string word : checkWords) {
+                int levDist = levenshteinDist(word, work);
+                std::cout << levDist << std::endl;
+                if (levDist < 5) {
+                    count[levDist]++;
+                }
+            }
+        }
+    }
+    int totalLev[5] = {0, 0, 0, 0, 0};
+    MPI_Reduce(&count, &totalLev, 5, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+}
+
+int main(int argc, char* argv[]) {
+    std::cout << levenshteinDist("one", "nine");
+    return 0;
+}

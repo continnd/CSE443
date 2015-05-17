@@ -41,9 +41,9 @@ void doWorkerTasks() {
     } while (number != -1);
 }
 
-void printMsg(std::ostream* os, long long* factors) {
-    std::cout << "Number " << factors[0] << " has " << factors[1]
-        << " factors.\n";
+void printMsg(std::ostream& os, int* factors) {
+    os << "Number " << factors[0] << " has " << factors[1]
+        << " factors.\n" << std::flush;
 }
 
 void doManagerTasks(const int size, std::ifstream data) {
@@ -52,23 +52,23 @@ void doManagerTasks(const int size, std::ifstream data) {
             << "Manager aborting.\n";
     } else {
         MPI_Status status;
-        long long number, factors[2];
-        int closed = 0;
+        long long number = 0;
+        int closed = 0, factors[2];
         // Send number to be converted to the worker
         for (int i = 1; i < size && data >> number; i++) {
             MPI_Send(&number, 1, MPI_LONG_LONG_INT, i, NUMBER_TAG,
                     MPI_COMM_WORLD);
         }
-        while (closed < size) {
+        while (closed < size - 1) {
+            MPI_Recv(factors, 2, MPI_INT, MPI_ANY_SOURCE, FACTORS_TAG,
+                    MPI_COMM_WORLD, &status);
             if (!(data >> number)) {
                 number = -1;
                 closed++;
             }
-            MPI_Recv(&factors, 2, MPI_INT, MPI_ANY_SOURCE, FACTORS_TAG,
-                    MPI_COMM_WORLD, &status);
-            printMsg(std::cout, factors);
             MPI_Send(&number, 1, MPI_LONG_LONG_INT, status.MPI_SOURCE,
                     NUMBER_TAG, MPI_COMM_WORLD);
+            printMsg(std::cout, factors);
         }
     }
 }
